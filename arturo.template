@@ -1,0 +1,51 @@
+-- Copyright 2006-2021 Mitchell. See LICENSE.
+-- Rebol LPeg lexer.
+
+local lexer = require('lexer')
+local token, word_match = lexer.token, lexer.word_match
+local P, S = lpeg.P, lpeg.S
+
+local lex = lexer.new('arturo')
+
+-- Whitespace.
+lex:add_rule('whitespace', token(lexer.WHITESPACE, lexer.space^1))
+
+-- Comments.
+local line_comment = lexer.to_eol(';')
+local block_comment = 'comment' * P(' ')^-1 * lexer.range('{', '}')
+lex:add_rule('comment', token(lexer.COMMENT, line_comment + block_comment))
+
+-- Keywords.
+lex:add_rule('keyword', token(lexer.KEYWORD, word_match{
+  '{#keywords#}'
+}))
+-- Constants.
+lex:add_rule('function', token(lexer.CONSTANT, word_match{
+  '{#constants#}'
+}))
+
+
+-- Identifiers.
+lex:add_rule('identifier', token(lexer.FUNCTION, (lexer.alpha + '-') * (lexer.alnum + '-')^0))
+
+-- Strings.
+local dq_str = lexer.range('"', true)
+local br_str = lexer.range('{', '}', false, false, true)
+local word_str = "'" * lexer.word
+lex:add_rule('string', token(lexer.STRING, dq_str + br_str + word_str))
+
+-- Numbers.
+local integer = lexer.digit^1 * ('_' * lexer.digit^1)^0
+local float = integer^1 * ('.' * integer^0)^-1 * S('eE') * S('+-')^-1 * integer
+local hex = '#' * lexer.xdigit^1 * ("'" * lexer.xdigit^1)^0
+lex:add_rule('number', token(lexer.NUMBER, S('+-')^-1 * (float + integer)))
+
+-- Operators.
+lex:add_rule('operator', token(lexer.OPERATOR, S('=<>+/*:()[]')))
+
+-- Fold points.
+lex:add_fold_point(lexer.COMMENT, '{', '}')
+lex:add_fold_point(lexer.COMMENT, lexer.fold_consecutive_lines(';'))
+lex:add_fold_point(lexer.OPERATOR, '[', ']')
+
+return lex

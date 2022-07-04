@@ -1,0 +1,104 @@
+-- Copyright 2007-2022 Guaracy Monteiro. MIT
+
+local M = {}
+
+textadept.file_types.extensions.art = 'arturo'
+
+-- Change the run commands for Arturo
+-- textadept.run.run_commands.arturo = '/home/guaracy/.arturo/bin/arturo --no-color "%f"'
+textadept.run.run_commands.arturo = 'arturo --no-color "%f"'
+textadept.run.error_patterns.arturo = {'^.*error.*(.-): (%d+)$'} -- error | Line: 6
+-- ui.dialogs.colorselect{title = 'Foreground color', color = 0x000000, palette = {'#000000', 0x0000FF, '#00FF00', 0xFF0000}}
+
+
+
+-- Ctrl+/
+textadept.editing.comment_string.arturo = ';'
+
+textadept.editing.autocomplete("arturo")
+textadept.editing.autocompleters.arturo = arturo_complete
+
+events.connect(events.LEXER_LOADED, function(name)
+  if name ~= 'arturo' then return end
+  buffer.use_tabs, buffer.tab_width = false, 2
+end)
+
+M.tags = {_HOME .. '/modules/arturo/tags', _USERHOME .. '/modules/arturo/tags'}
+
+local XPM = textadept.editing.XPM_IMAGES
+local xpms = {c = XPM.CLASS, f = XPM.METHOD, m = XPM.VARIABLE, M = XPM.STRUCT, v = XPM.VARIABLE}
+
+-- rework - copy'n'pasted
+textadept.editing.autocompleters.arturo = function()
+  local list = {}
+  -- Retrieve the symbol behind the caret.
+  local line, pos = buffer:get_cur_line()
+  local symbol, op, part = line:sub(1, pos - 1):match('([%w_%.]-)(%.?)([%w_]*)$')
+  if symbol == '' and part == '' then return nil end -- nothing to complete
+  -- Attempt to identify the symbol type.
+  -- TODO: identify literals like "'foo'." and "[1, 2, 3].".
+  local assignment = '%f[%w_]' .. symbol:gsub('(%p)', '%%%1') .. '%s*=%s*(.*)$'
+  for i = buffer:line_from_position(buffer.current_pos) - 1, 1, -1 do
+    local expr = buffer:get_line(i):match(assignment)
+    if not expr then goto continue end
+    for patt, type in pairs(M.expr_types) do
+      if expr:find(patt) then
+        symbol = type
+        break
+      end
+    end
+    if expr:find('^[%u][%w_.]*%s*%b()%s*$') then
+      symbol = expr:match('^([%u][%w_.]+)%s*%b()%s*$') -- e.g. a = Foo()
+      break
+    end
+    ::continue::
+  end
+  -- Search through ctags for completions for that symbol.
+  local name_patt = '^' .. part
+  local sep = string.char(buffer.auto_c_type_separator)
+  for _, filename in ipairs(M.tags) do
+    if not lfs.attributes(filename) then goto continue end
+    for line in io.lines(filename) do
+      local name = line:match('^%S+')
+      if not name:find(name_patt) or list[name] then goto continue end
+      local fields = line:match(';"\t(.*)$')
+      local k, class = fields:sub(1, 1), fields:match('class:(%S+)') or ''
+      if class == symbol then list[#list + 1], list[name] = name .. sep .. xpms[k], true end
+      ::continue::
+    end
+    ::continue::
+  end
+  return #part, list
+end
+
+
+-- Snippets.
+
+M.autocomplete_snippets = true
+
+snippets['arturo'] = snippets['arturo'] or {}
+snippets.arturo['f']     =  '%1(name): function [%2(params)][\n\t%0(body)\n]'
+snippets.arturo['l']     =  'loop %1(collection) [i][\n\t\n]\n'
+snippets.arturo['dic']   =  '%1: #[\n\t%0\n]'
+snippets.arturo['sel']   =  'select %1 [x][\n\t%0 x\n]'
+snippets.arturo['sela']  =  'select %1 \'x -> %0 x'
+snippets.arturo['t']     =  '; TODO: %<os.date("%x at %X")>\n; %1(text)\n\n'
+snippets.arturo['b']     =  '; %<string.rep("-",78)>\n; %1\n; %<string.rep("-",78)>\n\n'
+
+snippets.arturo['h']     =  '#!/usr/bin/env arturo\n' ..
+							'; %<string.rep("=",78)>\n;\n' ..
+							'; %1(description)\n;\n' ..
+							'; file: ; %<get_file_name(buffer.filename)>\n' ..
+							'; author: %2(author)\n' ..
+							'; copyright: %<os.date("%Y")>\n' ..
+							'; licence: %3(MIT)\n' ..
+							'; %<string.rep("=",78)>\n\n'
+
+--snip.def = '#define %1(name) %2(value)'
+--snip.inc = '#include "%1"'
+--snip.Inc = '#include <%1>'
+--snip.pif = '#if %1\n%0\n#endif'
+--snip.main = 'int main(int argc, const char **argv) {\n\t%0\n\treturn 0;\n}'
+--snip.printf = 'printf("%1(%s)\\n", %2);'
+
+return M

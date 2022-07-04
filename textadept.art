@@ -1,0 +1,70 @@
+#!/usr/bin/env arturo
+;========================================================
+; textadept
+;
+; Textadept configuration generator for Arturo
+;
+;--------------------------------------------------------
+;; name: textadept.art
+;; version: 0.0.1
+;; author: guaracy
+;; category: tool
+;========================================================
+
+myfirstdef: 0
+
+print color.bold #cyan "Arturo's TextAdept builder"
+
+const: new []
+keywords: new []
+
+print color #magenta "Collect symbols."
+loop symbols [k,v][
+  if k = "myfirstdef" -> break
+  if k = "" -> continue
+  if? not? function? v -> 'const ++ k
+  else -> 'keywords ++ k
+]
+sort 'keywords
+sort 'const
+
+outDir: path\home ++ ".textadept/modules/arturo/"
+write.directory outDir ""
+
+print color #magenta "Creating api."
+api: new []
+loop keywords [a][
+  aprop: info.get a
+  'api ++ (~"|aprop\name| type: |aprop\type|\\nDescription: ") ++ aprop\description
+]
+write  (outDir ++ "api") (join.with: "\n" api)
+
+print color #magenta "Creating tags."
+tags: new[]
+loop keywords [k] [
+  'tags ++ ~"|k|\t_\t0;\"\tf"
+]
+loop const [k] [
+  'tags ++ ~"|k|\t_\t0;\"\tv"
+]
+write  outDir ++ "tags" join.with: "\n" tags
+
+print color #magenta "Creating init."
+init: read "init.template"
+write  outDir ++ "init.lua" init
+
+
+
+print color #magenta "Creating lexer."
+const: join.with: "', '" const
+keywords: join.with: "', '" keywords
+lexer: read "arturo.template"
+replace 'lexer "{#keywords#}" keywords
+replace 'lexer "{#constants#}" const
+
+; how to get user home directory
+outDir: path\home ++ ".textadept/lexers/"
+write.directory outDir ""
+
+write outDir ++ "arturo.lua" lexer
+print color.bold #cyan "Done."
